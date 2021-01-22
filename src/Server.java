@@ -1,3 +1,5 @@
+import java.io.File;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.net.Socket;
@@ -8,31 +10,52 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 public class Server {
-    public static List<ClientHandler> clientsList = new ArrayList<>();
-    static boolean serverIsOn = true;
+    public static List<String> users = new ArrayList<>();
+    public static List<String> passwords = new ArrayList<>();
+    public static String serverName;
+    public static File credentialsFile;
 
     public static void main(String[] args) {
         Scanner input = new Scanner(System.in);
+        System.out.println("Please enter the server name and port number: ");
+        serverName = input.nextLine();
+        int port = input.nextInt();
 
-        Thread commandsThread = new Thread(){
-            @Override
-            public void run() {
-                String command = input.nextLine();
-                
+        File serverFolder = new File(serverName);
+        // Creates a folder if it doesn't exist
+        serverFolder.mkdir();
+
+        credentialsFile = new File(serverName + "/credentials.txt");
+
+
+
+        try {
+            File portFile = new File(serverName + "/port.txt");
+            portFile.createNewFile();
+            FileWriter myWriter = new FileWriter(portFile, false);
+            myWriter.write(Integer.toString(port));
+            myWriter.close();
+            // Creates a file if it doesn't exist
+            if(!credentialsFile.createNewFile()){
+                Scanner fileScanner = new Scanner(credentialsFile);
+                while (fileScanner.hasNextLine()) {
+                    users.add(fileScanner.nextLine());
+                    passwords.add(fileScanner.nextLine());
+                }
             }
-        };
-        commandsThread.start();
+        } catch (IOException e) {
+            System.out.println("Credentials file is not created");
+            return;
+        }
 
         try{
-            ServerSocket server = new ServerSocket(22000);
-            System.out.println("Server is up!!");
+            ServerSocket server = new ServerSocket(port);
+            System.out.println(serverName + " server with port number ‘" + port + "’ is booted up.");
 
-            while(serverIsOn){
+            while(true){
                 Socket client = server.accept();
-                System.out.println(client.getInetAddress() + " Connected");
                 ClientHandler clientHandler = new ClientHandler(client);
                 clientHandler.start();
-                clientsList.add(clientHandler);
             }
         }
         catch (IOException e){
@@ -40,22 +63,17 @@ public class Server {
         }
     }
 
-    public static void sendMessage(ClientHandler clientSending, String message){
-        for (ClientHandler client : clientsList) {
-            try{
-                if(client != clientSending){
-                    client.getClientWrite().writeUTF(message);
-                }
-            }
-            catch (IOException e){
-                Logger.getLogger(Server.class.getName()).log(Level.SEVERE, null, e);
-            }
+    public static void addUser(String user, String password){
+        try {
+            FileWriter myWriter = new FileWriter(credentialsFile, true);
+            myWriter.write(user + "\n");
+            myWriter.write(password + "\n");
+            myWriter.close();
 
+            users.add(user);
+            passwords.add(password);
+        } catch (IOException e) {
+            System.out.println("An error occurred when writing credentials.");
         }
-    }
-
-    public static void removeClient(ClientHandler clientToRemove) {
-        clientsList.remove(clientToRemove);
-        System.out.println(clientToRemove.getClient().getInetAddress() + " Disconnected");
     }
 }
