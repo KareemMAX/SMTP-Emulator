@@ -5,21 +5,20 @@ import java.util.Scanner;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-public class ClientHandler extends Thread{
+public class ClientHandler extends Thread {
     Socket client;
     DataInputStream clientRead;
     DataOutputStream clientWrite;
     String name = null;
     boolean isUser = false;
 
-    ClientHandler(Socket client){
-        try{
+    ClientHandler(Socket client) {
+        try {
             this.client = client;
             clientRead = new DataInputStream(client.getInputStream());
             clientWrite = new DataOutputStream(client.getOutputStream());
             clientWrite.writeUTF("220 " + Server.serverName);
-        }
-        catch (IOException e){
+        } catch (IOException e) {
             Logger.getLogger(ClientHandler.class.getName()).log(Level.SEVERE, null, e);
         }
     }
@@ -27,23 +26,22 @@ public class ClientHandler extends Thread{
     @Override
     public void run() {
         try {
-            while(true) {
+            while (true) {
                 String message = clientRead.readUTF();
 
-                if(message.equalsIgnoreCase("REGISTER") ||
+                if (message.equalsIgnoreCase("REGISTER") ||
                         message.equalsIgnoreCase("LOGIN") ||
-                        message.equalsIgnoreCase("HELLO")){
-                    if(message.equalsIgnoreCase("REGISTER")){
+                        message.startsWith("HELLO")) {
+                    if (message.equalsIgnoreCase("REGISTER")) {
                         String user = clientRead.readUTF();
                         String password = clientRead.readUTF();
 
-                        if(Server.users.contains(user)){
-                            // TODO: Check if we want to keep it
+                        if (Server.users.contains(user)) {
                             clientWrite.writeUTF("535 Authentication credentials invalid - Email Exists");
-                            continue;
-                        }
-                        else{
-                            clientWrite.writeUTF("250 REGESTIRED");
+                        } else if (!user.endsWith("@" + Server.serverName)) {
+                            clientWrite.writeUTF("535 Authentication credentials invalid - Incorrect email");
+                        } else {
+                            clientWrite.writeUTF("250 REGISTERED");
                             Server.addUser(user, password);
                             name = user;
                             File userFolder = new File(Server.serverName + "/" + name);
@@ -51,18 +49,16 @@ public class ClientHandler extends Thread{
                             File userFile = new File(Server.serverName + "/" + name + "/inbox.txt");
                             userFile.createNewFile();
                         }
-                    }
-                    else if(message.equalsIgnoreCase("LOGIN")){
+                    } else if (message.equalsIgnoreCase("LOGIN")) {
                         String user = clientRead.readUTF();
                         String password = clientRead.readUTF();
 
                         int userId = Server.users.indexOf(user);
-                        if(userId == -1){
+                        if (userId == -1) {
                             clientWrite.writeUTF("535 Authentication credentials invalid - Email Doesn't Exists");
                             continue;
-                        }
-                        else{
-                            if(!password.equals(Server.passwords.get(userId))){
+                        } else {
+                            if (!password.equals(Server.passwords.get(userId))) {
                                 clientWrite.writeUTF("535 Authentication credentials invalid - Incorrect password");
                                 continue;
                             }
@@ -70,22 +66,20 @@ public class ClientHandler extends Thread{
                         clientWrite.writeUTF("250 LOGIN");
                         name = user;
 
-                    }
-                    else if(message.startsWith("HELLO")){
-                        if(name != null){
+                    } else if (message.startsWith("HELLO")) {
+                        if (name != null) {
                             // User has joined
                             isUser = true;
                         }
                         // else: Other server has joined
 
                         name = message.replaceFirst("HELLO ", "");
-                        clientWrite.writeUTF("250 Hello "+ name +", pleased to meet you");
+                        clientWrite.writeUTF("250 Hello " + name + ", pleased to meet you");
                         handleUser();
                         break;
                     }
-                }
-                else if(message.equalsIgnoreCase("QUIT")){
-                    clientWrite.writeUTF("221 " + Server.serverName + "closing connection");
+                } else if (message.equalsIgnoreCase("QUIT")) {
+                    clientWrite.writeUTF("221 " + Server.serverName + " closing connection");
                     clientWrite.close();
                     clientRead.close();
                     client.close();
@@ -93,9 +87,18 @@ public class ClientHandler extends Thread{
                 }
             }
         } catch (IOException e) {
-            try{clientWrite.close();} catch(IOException ignored){}
-            try{clientRead.close();} catch(IOException ignored){}
-            try{client.close();} catch(IOException ignored){}
+            try {
+                clientWrite.close();
+            } catch (IOException ignored) {
+            }
+            try {
+                clientRead.close();
+            } catch (IOException ignored) {
+            }
+            try {
+                client.close();
+            } catch (IOException ignored) {
+            }
         }
     }
 
@@ -104,68 +107,49 @@ public class ClientHandler extends Thread{
         String to = "";
         StringBuilder data = new StringBuilder();
 
-        while(true) {
+        while (true) {
             String message = clientRead.readUTF();
             if (message.startsWith("MAIL FROM")) {
                 // Replace first occurrence of "MAIL FROM" with empty string
                 from = message.replaceFirst("MAIL FROM ", "");
-                clientWrite.writeUTF("250 "+from+"...Sender ok");
-            }
-            else if (message.equalsIgnoreCase("RCPT TO")) {
+                clientWrite.writeUTF("250 " + from + "...Sender ok");
+            } else if (message.equalsIgnoreCase("RCPT TO")) {
                 to = clientRead.readUTF();
-                clientWrite.writeUTF("250 "+to+"...Recipient ok");
-            }
-            else if (message.equalsIgnoreCase("DATA")) {
+                clientWrite.writeUTF("250 " + to + "...Recipient ok");
+            } else if (message.equalsIgnoreCase("DATA")) {
                 clientWrite.writeUTF("Please enter the body of your email ended by ‘&&&‘");
-                while (true){
+                while (true) {
                     message = clientRead.readUTF();
-                    if(!message.equals("&&&"))
+                    if (!message.equals("&&&"))
                         data.append(message).append("\n");
-                    else{
+                    else {
                         clientWrite.writeUTF("250 Message accepted for delivery");
                         break;
                     }
                 }
                 String messageData = data.toString();
 
-                if(!isUser) //Server
+                if (!isUser) //Server
                 {
                     File userFile = new File(Server.serverName + "/" + to + "/inbox.txt");
                     FileWriter writer = new FileWriter(userFile, true);
-                    // ========================
-                    // FROM: ..............
-                    // TO: ..............
-                    //
-                    // MESSAGE
-                    // ========================
 
                     writer.write("FROM: " + from + '\n');
                     writer.write("TO: " + to + '\n');
-                    writer.write('\n' + messageData + '\n');
+                    writer.write('\n' + messageData);
                     writer.write("========================" + '\n');
                     writer.close();
-                }
-                else
-                {
-                    if(to.endsWith("@"+Server.serverName))
-                    {
+                } else {
+                    if (to.endsWith("@" + Server.serverName)) {
                         File userFile = new File(Server.serverName + "/" + to + "/inbox.txt");
                         FileWriter writer = new FileWriter(userFile, true);
-                        // ========================
-                        // FROM: ..............
-                        // TO: ..............
-                        //
-                        // MESSAGE
-                        // ========================
 
                         writer.write("FROM: " + from + '\n');
                         writer.write("TO: " + to + '\n');
                         writer.write('\n' + messageData + '\n');
                         writer.write("========================" + '\n');
                         writer.close();
-                    }
-                    else
-                    {
+                    } else {
                         String otherServer = to.substring(to.indexOf("@") + 1);
                         File portFile = new File(otherServer + "/port.txt");
                         Scanner fileScanner = new Scanner(portFile);
@@ -184,6 +168,7 @@ public class ClientHandler extends Thread{
                         serverWrite.writeUTF("RCPT TO");
                         serverWrite.writeUTF(to);
                         serverRead.readUTF();
+                        serverWrite.writeUTF("DATA");
                         serverWrite.writeUTF(messageData);
                         serverWrite.writeUTF("&&&");
                         serverRead.readUTF();
@@ -195,7 +180,7 @@ public class ClientHandler extends Thread{
                     }
                 }
             } else if (message.equalsIgnoreCase("QUIT")) {
-                clientWrite.writeUTF("221 " + Server.serverName + "closing connection");
+                clientWrite.writeUTF("221 " + Server.serverName + " closing connection");
                 clientWrite.close();
                 clientRead.close();
                 client.close();
